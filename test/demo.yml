@@ -1,0 +1,61 @@
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: create a security group in us-east-2 to allow SSH. Not safe for prod!
+        ec2_group:
+          name: eci-example
+          description: an example ec2 group
+          region: us-east-2
+          rules:
+            - proto: tcp
+              from_port: 22
+              to_port: 22
+              cidr_ip: 0.0.0.0/0
+        register: security_group
+      - name: create ec2 instance
+        ec2:
+          image: ami-00c03f7f7f2ec15c3
+          wait: yes
+          instance_type: t2.micro
+          group_id: "{{ security_group.group_id }}"
+          region: us-east-2
+          count: 1
+        register: ec2
+      - name: Add new instance to host group
+        add_host:
+          hostname: "{{ item.public_ip }}"
+          groupname: launched
+          ansible_instance_id: "{{ item.id }}"
+          ansible_aws_region: "{{ item.region }}"
+          ansible_aws_availability_zone: "{{ item.placement }}"
+        loop: "{{ ec2.instances }}"
+      - name: Wait for SSH to come up
+        wait_for:
+          host: "{{ item.public_dns_name }}"
+          port: 22
+          delay: 5
+          timeout: 60
+        loop: "{{ ec2.instances }}"
+- hosts: launched
+  connection: eci
+  vars:
+    aws_region: us-east-2 
+    ansible_ssh_user: "root"
+  gather_facts: false
+  tasks: 
+      - name: Connect to ec2 using eci with root@instance-id
+        ignore_errors: yes
+        command: echo "Connected $USER using instance-id"
+        register: message
+      - debug: msg="{{ message.stdout }}"
+        ignore_errors: yes
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks: 
+      - name: Terminate instances that were previously launched
+        ec2:
+          state: 'absent'
+          region: us-east-2
+          instance_ids: '{{ ec2.instance_ids }}'

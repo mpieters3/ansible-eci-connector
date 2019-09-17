@@ -27,11 +27,12 @@ DOCUMENTATION = '''
           description: The AWS region to use. If not specified then the value of the AWS_REGION or EC2_REGION environment variable, if any, is used. See http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region
           ini:
             - section: defaults
-              key: aws_region
+              key: region
           env:
-            - name: ANSIBLE_AWS_REGION
+            - name: AWS_REGION
+            - name: EC2_REGION
           vars:
-            - name: aws_region
+            - name: ansible_aws_region
       instance_id:
           description: ec2-instance-id to connect to
           ini:
@@ -39,15 +40,6 @@ DOCUMENTATION = '''
               key: instance_id
           vars:
             - name: ansible_instance_id
-      availability_zone:
-          description: availability_zone to connect to
-          ini:
-            - section: defaults
-              key: availability_zone
-          env:
-            - name: ANSIBLE_AVAILABILITY_ZONE
-          vars:
-            - name: ansible_availability_zone
       host:
           description: Hostname/ip to connect to.
           default: inventory_hostname
@@ -379,7 +371,7 @@ class Connection(ssh.Connection):
             "InstanceId": self.get_option('instance_id'), 
             "InstanceOSUser": self._play_context.remote_user,
             "SSHPublicKey": self._public_key,
-            "AvailabilityZone": self.get_option('availability_zone')
+            "AvailabilityZone": self.get_option('aws_availability_zone')
           }
           aws_client_args = {
             "region_name": self.get_option('aws_region'),
