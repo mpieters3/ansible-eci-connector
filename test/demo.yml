@@ -25,11 +25,16 @@
       - name: Add new instance to host group
         add_host:
           hostname: "{{ item.public_ip }}"
+          groupname: launched_no_instance
+          ansible_region: "{{ item.region }}" 
+        loop: "{{ ec2.instances }}"
+      - name: Add new instance to host group (better with ansible_instance_id)
+        add_host:
+          hostname: "{{ item.public_ip }}"
           groupname: launched
           ansible_instance_id: "{{ item.id }}"
-          ansible_aws_region: "{{ item.region }}"
-          ansible_aws_availability_zone: "{{ item.placement }}"
-        loop: "{{ ec2.instances }}"
+          ansible_region: "{{ item.region }}" 
+        loop: "{{ ec2.instances }}" 
       - name: Wait for SSH to come up
         wait_for:
           host: "{{ item.public_dns_name }}"
@@ -44,9 +49,22 @@
     ansible_ssh_user: "root"
   gather_facts: false
   tasks: 
-      - name: Connect to ec2 using eci with root@instance-id
+      - name: Connect to ec2 using eci with root@ip_address with instance-id
         ignore_errors: yes
         command: echo "Connected $USER using instance-id"
+        register: message
+      - debug: msg="{{ message.stdout }}"
+        ignore_errors: yes
+- hosts: launched_no_instance
+  connection: eci
+  vars:
+    aws_region: us-east-2 
+    ansible_ssh_user: "ec2-user"
+  gather_facts: false
+  tasks: 
+      - name: Connect to ec2 using eci with root@ip-address only (slower)
+        ignore_errors: yes
+        command: echo "Connected $USER using ip address only"
         register: message
       - debug: msg="{{ message.stdout }}"
         ignore_errors: yes

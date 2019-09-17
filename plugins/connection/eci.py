@@ -23,7 +23,7 @@ DOCUMENTATION = '''
             - name: ANSIBLE_AWS_SECRET_KEY
           vars:
             - name: aws_secret_key
-      aws_region:
+      region:
           description: The AWS region to use. If not specified then the value of the AWS_REGION or EC2_REGION environment variable, if any, is used. See http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region
           ini:
             - section: defaults
@@ -32,7 +32,9 @@ DOCUMENTATION = '''
             - name: AWS_REGION
             - name: EC2_REGION
           vars:
-            - name: ansible_aws_region
+            - name: ansible_region
+            - name: aws_region
+            - name: ec2_region
       instance_id:
           description: ec2-instance-id to connect to
           ini:
@@ -367,23 +369,57 @@ class Connection(ssh.Connection):
     def _bare_run(self, cmd, in_data, sudoable=True, checkrc=True):
       if((datetime.now() - self._last_key_push).total_seconds() > ECI_PUSH_EXPIRY):
           display.vvv("ECI PUB KEY EXPIRING/NOT SENT, PUSHING NOW")
-          eci_args = {
-            "InstanceId": self.get_option('instance_id'), 
-            "InstanceOSUser": self._play_context.remote_user,
-            "SSHPublicKey": self._public_key,
-            "AvailabilityZone": self.get_option('aws_availability_zone')
-          }
-          aws_client_args = {
-            "region_name": self.get_option('aws_region'),
-            "aws_secret_access_key": self.get_option('aws_secret_key'),
-            "aws_access_key_id": self.get_option('aws_access_key')
-          }
-
-          _push_key(eci_args, aws_client_args)
+          ##For some reason, playcontext not fully initialized
+          ##in testing before barerun, so only getting these arguments now
+          _push_key(self._get_boto_args(), self._get_eci_args())
           self._last_key_push = datetime.now()
 
       return ssh.Connection._bare_run(self, cmd=cmd, in_data=in_data, sudoable=sudoable, checkrc=checkrc)
 
-def _push_key(eci_args, aws_client_args):
+    def _get_eci_args(self):
+      ##TODO Make this cleaner, build once then always return
+      if(not hasattr(self, '_instance_id') and self.get_option('instance_id')):
+        self._instance_id = self.get_option('instance_id')
+      else:
+        client = boto3.client('ec2', **self._get_boto_args())
+        lookup_address = self._play_context.remote_addr
+        display.vvv("NO INSTANCE_ID PROVIDED, ATTEMPTING LOOKUP")
+        for filter_name in ('ip-address', 'private-ip-address', 'private-dns-name'):
+          filter = [{'Name': filter_name,'Values': [lookup_address ]}]
+          response = client.describe_instances(Filters=filter)
+          for r in response['Reservations']:
+            for i in r['Instances']:
+              self._instance_id = i['InstanceId']
+              self._availability_zone = i['Placement']['AvailabilityZone']
+          ##We've found it, so stop
+          if(hasattr(self, '_instance_id')):
+            break
+
+      if(not hasattr(self, '_instance_id')):
+        raise Exception('No instance_id found')
+
+      if(not hasattr(self, '_availability_zone')):
+        client = boto3.client('ec2', **self._get_boto_args())
+        response = client.describe_instances(InstanceIds=[self._instance_id])
+        for r in response['Reservations']:
+          for i in r['Instances']:
+            self._availability_zone = i['Placement']['AvailabilityZone']
+      return {
+            "InstanceId": self._instance_id, 
+            "InstanceOSUser": self._play_context.remote_user,
+            "SSHPublicKey": self._public_key,
+            "AvailabilityZone": self._availability_zone
+      }
+
+    def _get_boto_args(self):
+      if not hasattr(self, '_boto_args'):
+        self._boto_args = {
+            "region_name": self.get_option('region'),
+            "aws_secret_access_key": self.get_option('aws_secret_key'),
+            "aws_access_key_id": self.get_option('aws_access_key')
+          }
+      return self._boto_args
+
+def _push_key(aws_client_args, eci_args):
   client = boto3.client('ec2-instance-connect', **aws_client_args)
   client.send_ssh_public_key(**eci_args)
