@@ -4,7 +4,7 @@ bcrypt==3.1.7
 boto3==1.9.228
 botocore==1.12.228
 cffi==1.12.3
-cryptography==2.7
+cryptography==3.2
 docutils==0.15.2
 ec2instanceconnectcli==1.0.0
 Jinja2==2.10.1
