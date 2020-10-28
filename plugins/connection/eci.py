@@ -333,6 +333,7 @@ class Connection(ssh.Connection):
 
     def __init__(self, *args, **kwargs):
         ssh.Connection.__init__(self, *args, **kwargs)
+        self._load_name = self.__module__.split('.')[-1]
         self.set_options()
 
         if self._play_context.private_key_file:
