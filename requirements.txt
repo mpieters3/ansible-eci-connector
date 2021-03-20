@@ -7,7 +7,7 @@ cffi==1.12.3
 cryptography==2.7
 docutils==0.15.2
 ec2instanceconnectcli==1.0.0
-Jinja2==2.10.1
+Jinja2==2.11.3
 jmespath==0.9.4
 MarkupSafe==1.1.1
 paramiko==2.6.0
