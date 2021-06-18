@@ -263,6 +263,18 @@ DOCUMENTATION = '''
         vars:
           - name: ansible_sftp_batch_mode
             version_added: '2.7'
+      ssh_transfer_method:
+        description:
+            - "Preferred method to use when transferring files over ssh"
+            - Setting to 'smart' (default) will try them in order, until one succeeds or they all fail
+            - Using 'piped' creates an ssh pipe with ``dd`` on either side to copy the data
+        choices: ['sftp', 'scp', 'piped', 'smart']
+        env: [{name: ANSIBLE_SSH_TRANSFER_METHOD}]
+        ini:
+            - {key: transfer_method, section: ssh_connection}
+        vars:
+            - name: ansible_ssh_transfer_method
+              version_added: '2.12'
       scp_if_ssh:
         default: smart
         description:
@@ -286,6 +298,27 @@ DOCUMENTATION = '''
         vars:
           - name: ansible_ssh_use_tty
             version_added: '2.7'
+      timeout:
+        default: 10
+        description:
+            - This is the default amount of time we will wait while establishing an ssh connection
+            - It also controls how long we can wait to access reading the connection once established (select on the socket)
+        env:
+            - name: ANSIBLE_TIMEOUT
+            - name: ANSIBLE_SSH_TIMEOUT
+              version_added: '2.11'
+        ini:
+            - key: timeout
+              section: defaults
+            - key: timeout
+              section: ssh_connection
+              version_added: '2.11'
+        vars:
+          - name: ansible_ssh_timeout
+            version_added: '2.11'
+        cli:
+          - name: timeout
+        type: integer
 '''
 
 import importlib
@@ -366,6 +399,12 @@ class Connection(ssh.Connection):
           pem_out.write(pem)
       display.vvv("TEMPORARY KEY LOCATION: {0}".format(file.name))
       return (file.name, key)
+
+    def exec_command(self, cmd, in_data=None, sudoable=True):
+      self.set_option('private_key_file', self._play_context.private_key_file)
+      self.set_option('sshpass_prompt', '')
+      self.set_option('password', None)
+      return ssh.Connection.exec_command(self, cmd=cmd, in_data=in_data, sudoable=sudoable)
 
     def _bare_run(self, cmd, in_data, sudoable=True, checkrc=True):
       if((datetime.now() - self._last_key_push).total_seconds() > ECI_PUSH_EXPIRY):
