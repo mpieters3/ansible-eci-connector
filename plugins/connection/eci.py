@@ -340,7 +340,7 @@ except ImportError:
 try:
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    from cryptography.hazmat.primitives.serialization.ssh import load_ssh_private_key
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
     HAS_CRYPTOGRAPHY = True
@@ -371,7 +371,7 @@ class Connection(ssh.Connection):
 
         if self._play_context.private_key_file:
           display.vvv("EXISTING PRIVATE KEY FILE AVAILABLE, USING IT")
-          self._private_key = load_pem_private_key(self._play_context.private_key_file, None, default_backend())
+          self._private_key = load_ssh_private_key(open(self._play_context.private_key_file, 'rb').read(), None, default_backend())
         else:
           display.vvv("NO PRIVATE KEY FILE, GENERATING ON DEMAND")
           (self._play_context.private_key_file, self._private_key) = self._create_temporary_key()
