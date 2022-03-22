@@ -17,10 +17,10 @@
         amazon.aws.ec2_instance:
           image_id: ami-0c02fb55956c7d316
           state: running
+          instance_type: t2.micro
           wait: yes
           tags:
             test: test
-          instance_type: t2.micro
           network:
             assign_public_ip: true
           security_group: "{{ security_group.group_id }}"
@@ -60,19 +60,53 @@
         register: message
       - debug: msg="{{ message.stdout }}"
         ignore_errors: yes
+      - name: Connect to ec2 using eci with root@ip_address second time to check cache hit
+        ignore_errors: yes
+        command: echo "Re-connected $USER using instance-id"
+        register: message2
+      - debug: msg="{{ message2.stdout }}"
+        ignore_errors: yes
 - hosts: launched_no_instance
   connection: eci
   vars:
     aws_region: us-east-1 
+    ansible_ssh_user: "root"
     ansible_ssh_user: "ec2-user"
   gather_facts: false
   tasks: 
-      - name: Connect to ec2 using eci with root@ip-address only (slower)
+      - name: Connect to ec2 using eci with ec2-user@ip-address only (slower)
         ignore_errors: yes
         command: echo "Connected $USER using ip address only"
         register: message
       - debug: msg="{{ message.stdout }}"
         ignore_errors: yes
+      - name: Re-connect to ec2 using eci with ec2-user@ip-address only (slower) to test cache
+        ignore_errors: yes
+        command: echo "Reconnected $USER using ip address only"
+        register: message2
+      - debug: msg="{{ message2.stdout }}"
+        ignore_errors: yes
+- hosts: launched
+  connection: eci
+  vars:
+    aws_region: us-east-1 
+    ansible_ssh_user: "root"
+    ansible_host_key_checking: False
+    eci_disable_caching: True
+  gather_facts: false
+  tasks: 
+      - name: Connect to ec2 using eci with root@ip_address with instance-id without caching
+        ignore_errors: yes
+        command: echo "Connected $USER using instance-id"
+        register: message
+      - debug: msg="{{ message.stdout }}"
+        ignore_errors: yes
+      - name: Connect to ec2 using eci with root@ip_address second time to check no caching
+        ignore_errors: yes
+        command: echo "Re-connected $USER using instance-id"
+        register: message2
+      - debug: msg="{{ message2.stdout }}"
+        ignore_errors: yes        
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -82,3 +116,4 @@
           state: 'terminated'
           region: us-east-1
           instance_ids: '{{ ec2.instance_ids }}'
+          instance_type: t2.micro
