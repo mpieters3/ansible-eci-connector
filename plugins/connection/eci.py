@@ -377,6 +377,8 @@ DOCUMENTATION = '''
 '''
 
 import importlib
+import tempfile
+from datetime import datetime
 import os
 import time
 
@@ -401,10 +403,6 @@ try:
 except ImportError:
     HAS_CRYPTOGRAPHY = False
 
-import tempfile
-from datetime import datetime
-
-import importlib
 ssh = importlib.import_module('ansible.plugins.connection.ssh')
 
 ## we're going to base our connector off the basic SSH connector, as we want nearly all its behavior
