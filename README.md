@@ -3,8 +3,10 @@ The EC2 Instance Connect (ECI) connection plugin was created to take advantage o
 
 This is helpful in situations where you need to use continue to use ansible over AWS native instance management solutions, but want to take advantage of AWS's native IAM model for authorization as well as to avoid sharing of long living private keys.
 
+Check [releases](https://github.com/mpieters3/ansible-eci-connector/releases) for versions of this library for older Ansible versions
+
 ## Installation into Ansible
-Drop eci.py into a connection plugin location, as outlined in https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html
+Drop eci.py into a connection plugin location, as outlined in https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html. Must have boto3 and ec2instanceconnectcli python libraries available
 
 AWS Servers must be set up to support <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-connect-set-up.html">EC2 Instance Connect</a>. 
 
@@ -42,7 +44,7 @@ Continuing in your venv, set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for
 export AWS_ACCESS_KEY_ID='<<YOUR_ACCESS_KEY_ID>>'
 export AWS_SECRET_ACCESS_KEY='<<YOUR_SECRET_ACCESS_KEY>>'
 cd /workspaces/ansible-eci-connector/test
-env ANSIBLE_CONNECTION_PLUGINS=../plugins/connection ansible-playbook demo.yml
+env ANSIBLE_CONNECTION_PLUGINS=../plugins/connection ansible-playbook -vv demo.yml
 ```
 
 ## Why not MSSH? 
@@ -50,8 +52,6 @@ While <a href="https://github.com/mingbowan/mssh/blob/master/mssh.py">mssh</a> m
 
 ## TODO
 - IP Address to instance id (or vice versa?) lookup
-- Handle boto3 / other requirements missing cleanly
 - remove temp keys when run finishes
-- persist temp key across tasks? 
 - Look at incorporating into or deprecating in favor of [ansible-collections/community.aws](https://github.com/ansible-collections/community.aws)
 - - The S3 bucket does add additional complexity that this avoids...
