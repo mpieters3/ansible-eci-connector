@@ -3,6 +3,8 @@ The EC2 Instance Connect (ECI) connection plugin was created to take advantage o
 
 This is helpful in situations where you need to use continue to use ansible over AWS native instance management solutions, but want to take advantage of AWS's native IAM model for authorization as well as to avoid sharing of long living private keys.
 
+Check [releases](https://github.com/mpieters3/ansible-eci-connector/releases) for versions of this library for older Ansible versions
+
 ## Installation into Ansible
 Drop eci.py into a connection plugin location, as outlined in https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html. Must have boto3 and ec2instanceconnectcli python libraries available
 
