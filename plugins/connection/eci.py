@@ -26,6 +26,26 @@ DOCUMENTATION = '''
             - name: ANSIBLE_AWS_SECRET_KEY
           vars:
             - name: aws_secret_key
+      profile:
+          description: The name of a AWS profile to use. If not given, then the default profile is used.
+          ini:
+            - section: defaults
+              key: profile
+          env:
+            - name: ANSIBLE_AWS_PROFILE
+          vars:
+            - name: profile
+            - name: aws_profile
+      role_arn:
+          description: AWS role arn for STS assume-role.
+          ini:
+            - section: defaults
+              key: role_arn
+          env:
+            - name: ANSIBLE_AWS_ROLE_ARN
+          vars:
+            - name: role_arn
+            - name: aws_role_arn
       region:
           description: The AWS region to use. If not specified then the value of the AWS_REGION or EC2_REGION environment variable, if any, is used. See http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region
           ini:
@@ -440,6 +460,8 @@ ECI_CACHE_PUBLIC_KEY = "public_key"
 ECI_CACHE_REMOTE_USER = "remote_user"
 ECI_CACHE_INSTANCE_ID = "instance_id"
 ECI_CACHE_AZ = "availability_zone"
+ECI_CACHE_PROFILE = "profile"
+ECI_CACHE_ROLE_ARN = "role_arn"
 
 ECI_CONNECTION_CACHE = {}
 
@@ -458,9 +480,10 @@ class Connection(ssh.Connection):
         ssh.Connection.__init__(self, *args, **kwargs)
         self._load_name = self.__module__.split('.')[-1]
         self._ansible_playbook_pid = kwargs.get('ansible_playbook_pid')
+        self.session = None
 
         self.set_options()
-    
+
     def exec_command(self, cmd, in_data=None, sudoable=True):        
       self.set_option('private_key_file', self._get_eci_data()[ECI_CACHE_KEY_FILE])
       self.set_option('sshpass_prompt', '')
@@ -485,7 +508,7 @@ class Connection(ssh.Connection):
       connection_metadata = self._get_eci_data()
       if (datetime.now().timestamp() - connection_metadata[ECI_CACHE_LAST_PUSH]) > ECI_PUSH_EXPIRY:
         display.vv("ECI PUB KEY EXPIRING/NOT SENT, PUSHING NOW %s-%s" % (connection_metadata[ECI_CACHE_REMOTE_USER], connection_metadata[ECI_CACHE_INSTANCE_ID]))
-        self._push_key(self._get_boto_args(), connection_metadata)
+        self._push_key(connection_metadata)
         self._cache_eci_data(connection_metadata)
 
     def _cache_eci_data(self, connection_metadata):
@@ -497,6 +520,8 @@ class Connection(ssh.Connection):
         json.dump(connection_metadata, outfile)
 
     def _get_eci_data(self):
+      session = self._init_session()
+
       if hasattr(self, '_eci_data'):
         display.vvv("LOCAL ECI DATA EXISTS")
         return self._eci_data
@@ -536,7 +561,7 @@ class Connection(ssh.Connection):
       if self.get_option('instance_id'):
         cache_entry[ECI_CACHE_INSTANCE_ID] = self.get_option('instance_id')
       else:
-        client = boto3.client('ec2', **self._get_boto_args())
+        client = session.client('ec2')
         display.vv("NO INSTANCE_ID PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
         for filter_name in ('ip-address', 'private-ip-address', 'private-dns-name'):
           filter = [{'Name': filter_name,'Values': [lookup_address ]}]
@@ -555,7 +580,7 @@ class Connection(ssh.Connection):
         cache_entry[ECI_CACHE_AZ] = self.get_option('availability_zone')
       else:
         display.vv("NO AVAILABILITY_ZONE PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
-        client = boto3.client('ec2', **self._get_boto_args())
+        client = session.client('ec2')
         response = client.describe_instances(InstanceIds=[cache_entry[ECI_CACHE_INSTANCE_ID]])
         for r in response['Reservations']:
           for i in r['Instances']:
@@ -588,13 +613,39 @@ class Connection(ssh.Connection):
       if not hasattr(self, '_boto_args'):
         self._boto_args = {
             "region_name": self.get_option('region'),
+            "profile_name": self.get_option('profile'),
             "aws_secret_access_key": self.get_option('aws_secret_key'),
             "aws_access_key_id": self.get_option('aws_access_key')
           }
       return self._boto_args
 
-    def _push_key(self, aws_client_args, connection_metadata):
-      client = boto3.client('ec2-instance-connect', **aws_client_args)
+    def _aws_switch_role(self, role_arn):
+      client = self.session.client('sts')
+      response = client.assume_role(
+          RoleArn=role_arn,
+          RoleSessionName='ansible_eci'
+      )
+      return response.get("Credentials")
+
+    def _init_session(self):
+      if self.session == None:
+        boto_args = self._get_boto_args()
+        self.session = boto3.Session(**boto_args)
+
+        if self.get_option('role_arn'):
+          credential = self._aws_switch_role(self.get_option('role_arn'))
+          self.session = boto3.Session(
+            aws_access_key_id=credential["AccessKeyId"],
+            aws_secret_access_key=credential["SecretAccessKey"],
+            aws_session_token=credential["SessionToken"],
+            region_name=self.get_option('region')
+          )
+
+      return self.session
+
+    def _push_key(self, connection_metadata):
+      session = self._init_session()
+      client = session.client('ec2-instance-connect')
       client.send_ssh_public_key(
           InstanceId=connection_metadata[ECI_CACHE_INSTANCE_ID], 
           InstanceOSUser=connection_metadata[ECI_CACHE_REMOTE_USER],
