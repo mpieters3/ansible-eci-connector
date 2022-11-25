@@ -83,7 +83,7 @@ DOCUMENTATION = '''
             - name: eci_disable_caching        
           version_added: 2.12.0
       host:
-          description: Hostname/IP to connect to.
+          description: Hostname/IP/Domain name to connect to.
           default: inventory_hostname
           vars:
                - name: inventory_hostname
@@ -422,6 +422,8 @@ import json
 import os
 import tempfile
 from datetime import datetime
+import socket
+import ipaddress
 
 from ansible.module_utils.basic import missing_required_lib
 from ansible.errors import AnsibleConnectionFailure, AnsibleError
@@ -558,6 +560,10 @@ class Connection(ssh.Connection):
         }
 
       lookup_address = self._play_context.remote_addr
+      try:
+        ip = ipaddress.ip_address(lookup_address)
+      except ValueError:
+        lookup_address = socket.gethostbyname(lookup_address)
       if self.get_option('instance_id'):
         cache_entry[ECI_CACHE_INSTANCE_ID] = self.get_option('instance_id')
       else:
