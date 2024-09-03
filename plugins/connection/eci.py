@@ -1,4 +1,4 @@
-DOCUMENTATION = '''
+DOCUMENTATION = """
     connection: eci
     short_description: use ec2-instance-connect to support the ansible ssh module
     description:
@@ -80,7 +80,7 @@ DOCUMENTATION = '''
             - section: defaults
               key: eci_disable_caching
           vars:
-            - name: eci_disable_caching        
+            - name: eci_disable_caching
           version_added: 2.12.0
       host:
           description: Hostname/IP/Domain name to connect to.
@@ -414,47 +414,48 @@ DOCUMENTATION = '''
           - {key: pkcs11_provider, section: ssh_connection}
         vars:
           - name: ansible_ssh_pkcs11_provider
-'''
+"""
 
 import hashlib
 import importlib
+import ipaddress
 import json
 import os
+import socket
 import tempfile
 from datetime import datetime
-import socket
-import ipaddress
 
+from ansible.errors import AnsibleError
 from ansible.module_utils.basic import missing_required_lib
-from ansible.errors import AnsibleConnectionFailure, AnsibleError
 
 try:
     import boto3
+
     HAS_BOTO = True
 except ImportError:
     HAS_BOTO = False
-    
+
 try:
     from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives.serialization.ssh import load_ssh_private_key
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization.ssh import load_ssh_private_key
+
     HAS_CRYPTOGRAPHY = True
 except ImportError:
     HAS_CRYPTOGRAPHY = False
 
-ssh = importlib.import_module('ansible.plugins.connection.ssh')
+ssh = importlib.import_module("ansible.plugins.connection.ssh")
 
 try:
     from __main__ import display
 except ImportError:
     from ansible.utils.display import Display
+
     display = Display()
 
 
 ECI_PUSH_EXPIRY = 45
-ECI_KEY_SIZE = 2048
-ECI_KEY_EXPONENT = 65537
 
 ECI_CACHE_KEY_FILE = "key_file"
 ECI_CACHE_LAST_PUSH = "last_push"
@@ -467,195 +468,199 @@ ECI_CACHE_ROLE_ARN = "role_arn"
 
 ECI_CONNECTION_CACHE = {}
 
-class Connection(ssh.Connection):
-    """ SSH connection that uses EC2 Instance Connect to connect """
 
-    transport = 'eci'
+class Connection(ssh.Connection):
+    """SSH connection that uses EC2 Instance Connect to connect"""
+
+    transport = "eci"
     has_pipelining = True
 
     def __init__(self, *args, **kwargs):
         if not HAS_BOTO:
-          raise AnsibleError(missing_required_lib("boto3"))
+            raise AnsibleError(missing_required_lib("boto3"))
         if not HAS_CRYPTOGRAPHY:
-          raise AnsibleError(missing_required_lib("cryptography"))
+            raise AnsibleError(missing_required_lib("cryptography"))
 
         ssh.Connection.__init__(self, *args, **kwargs)
-        self._load_name = self.__module__.split('.')[-1]
-        self._ansible_playbook_pid = kwargs.get('ansible_playbook_pid')
+        self._load_name = self.__module__.split(".")[-1]
+        self._ansible_playbook_pid = kwargs.get("ansible_playbook_pid")
         self.session = None
 
         self.set_options()
 
-    def exec_command(self, cmd, in_data=None, sudoable=True):        
-      self.set_option('private_key_file', self._get_eci_data()[ECI_CACHE_KEY_FILE])
-      self.set_option('sshpass_prompt', '')
-      self.set_option('password', None)
-      return ssh.Connection.exec_command(self, cmd=cmd, in_data=in_data, sudoable=sudoable)
+    def exec_command(self, cmd, in_data=None, sudoable=True):
+        self.set_option("private_key_file", self._get_eci_data()[ECI_CACHE_KEY_FILE])
+        self.set_option("sshpass_prompt", "")
+        self.set_option("password", None)
+        return ssh.Connection.exec_command(self, cmd=cmd, in_data=in_data, sudoable=sudoable)
 
     def _bare_run(self, cmd, in_data, sudoable=True, checkrc=True):
-      self._refresh_eci()
-      return ssh.Connection._bare_run(self, cmd=cmd, in_data=in_data, sudoable=sudoable, checkrc=checkrc)
+        self._refresh_eci()
+        return ssh.Connection._bare_run(self, cmd=cmd, in_data=in_data, sudoable=sudoable, checkrc=checkrc)
 
-    def _cache_file_path(self):      
-      cache_key = "%s_%s_%s" % (self._play_context.remote_addr, self._play_context.remote_user, self._ansible_playbook_pid)
-      m = hashlib.sha1()
-      m.update(bytes(cache_key, "utf-8"))
-      digest = m.hexdigest()
-      cache_file_path = os.path.join(tempfile.gettempdir(), digest[:10])
-      display.vv("CACHE_FILE_PATH: %s" % cache_file_path)
+    def _cache_file_path(self):
+        cache_key = "{}_{}_{}".format(
+            self._play_context.remote_addr,
+            self._play_context.remote_user,
+            self._ansible_playbook_pid,
+        )
+        m = hashlib.sha1()
+        m.update(bytes(cache_key, "utf-8"))
+        digest = m.hexdigest()
+        cache_file_path = os.path.join(tempfile.gettempdir(), digest[:10])
+        display.vv("CACHE_FILE_PATH: %s" % cache_file_path)
 
-      return cache_file_path
+        return cache_file_path
 
     def _refresh_eci(self):
-      connection_metadata = self._get_eci_data()
-      if (datetime.now().timestamp() - connection_metadata[ECI_CACHE_LAST_PUSH]) > ECI_PUSH_EXPIRY:
-        display.vv("ECI PUB KEY EXPIRING/NOT SENT, PUSHING NOW %s-%s" % (connection_metadata[ECI_CACHE_REMOTE_USER], connection_metadata[ECI_CACHE_INSTANCE_ID]))
-        self._push_key(connection_metadata)
-        self._cache_eci_data(connection_metadata)
+        connection_metadata = self._get_eci_data()
+        if (datetime.now().timestamp() - connection_metadata[ECI_CACHE_LAST_PUSH]) > ECI_PUSH_EXPIRY:
+            display.vv(
+                "ECI PUB KEY EXPIRING/NOT SENT, PUSHING NOW %s-%s"
+                % (connection_metadata[ECI_CACHE_REMOTE_USER], connection_metadata[ECI_CACHE_INSTANCE_ID])
+            )
+            self._push_key(connection_metadata)
+            self._cache_eci_data(connection_metadata)
 
     def _cache_eci_data(self, connection_metadata):
-      self._eci_data = connection_metadata
-      if self.get_option('disable_caching'):
-        return
-      file_path = self._cache_file_path()
-      with open(file_path, 'w') as outfile:
-        json.dump(connection_metadata, outfile)
+        self._eci_data = connection_metadata
+        if self.get_option("disable_caching"):
+            return
+        file_path = self._cache_file_path()
+        with open(file_path, "w") as outfile:
+            json.dump(connection_metadata, outfile)
 
     def _get_eci_data(self):
-      session = self._init_session()
+        session = self._init_session()
 
-      if hasattr(self, '_eci_data'):
-        display.vvv("LOCAL ECI DATA EXISTS")
-        return self._eci_data
-      
-      if not self.get_option('disable_caching'):
-        ## check if a file already exists
-        file_path = self._cache_file_path()
-        if os.path.exists(file_path):
-          display.vv("CACHED ECI DATA EXISTS")
-          with open(file_path, 'r') as outfile:
-            self._eci_data = json.load(outfile)
+        if hasattr(self, "_eci_data"):
+            display.vvv("LOCAL ECI DATA EXISTS")
             return self._eci_data
+
+        if not self.get_option("disable_caching"):
+            ## check if a file already exists
+            file_path = self._cache_file_path()
+            if os.path.exists(file_path):
+                display.vv("CACHED ECI DATA EXISTS")
+                with open(file_path) as outfile:
+                    self._eci_data = json.load(outfile)
+                    return self._eci_data
+            else:
+                display.vv("NO CACHED ECI DATA EXISTS")
+
+        if self._play_context.private_key_file:
+            display.vv("EXISTING PRIVATE KEY FILE AVAILABLE, USING IT")
+            private_key = load_ssh_private_key(
+                open(self._play_context.private_key_file, "rb").read(), None, default_backend()
+            )
+            private_key_file = self._play_context.private_key_file
         else:
-          display.vv("NO CACHED ECI DATA EXISTS")
+            display.vv("NO PRIVATE KEY FILE, GENERATING ON DEMAND")
+            private_key_file, private_key = self._create_temporary_key()
 
-      if self._play_context.private_key_file:
-        display.vv("EXISTING PRIVATE KEY FILE AVAILABLE, USING IT")
-        private_key = load_ssh_private_key(open(self._play_context.private_key_file, 'rb').read(), None, default_backend())
-        private_key_file = self._play_context.private_key_file
-      else:
-        display.vv("NO PRIVATE KEY FILE, GENERATING ON DEMAND")
-        private_key_file, private_key = self._create_temporary_key()
+            public_key = (
+                private_key.public_key()
+                .public_bytes(encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH)
+                .decode("utf-8")
+            )
 
-        public_key = private_key.public_key().public_bytes(
-          encoding=serialization.Encoding.OpenSSH,
-          format=serialization.PublicFormat.OpenSSH
-        ).decode('utf-8')
-        
-        cache_entry = {
-          ECI_CACHE_KEY_FILE: private_key_file,
-          ECI_CACHE_PUBLIC_KEY: public_key,
-          ECI_CACHE_LAST_PUSH: 0,
-          ECI_CACHE_REMOTE_USER: self._play_context.remote_user,
-        }
+            cache_entry = {
+                ECI_CACHE_KEY_FILE: private_key_file,
+                ECI_CACHE_PUBLIC_KEY: public_key,
+                ECI_CACHE_LAST_PUSH: 0,
+                ECI_CACHE_REMOTE_USER: self._play_context.remote_user,
+            }
 
-      lookup_address = self._play_context.remote_addr
-      try:
-        ip = ipaddress.ip_address(lookup_address)
-      except ValueError:
-        lookup_address = socket.gethostbyname(lookup_address)
-      if self.get_option('instance_id'):
-        cache_entry[ECI_CACHE_INSTANCE_ID] = self.get_option('instance_id')
-      else:
-        client = session.client('ec2')
-        display.vv("NO INSTANCE_ID PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
-        for filter_name in ('ip-address', 'private-ip-address', 'private-dns-name'):
-          filter = [{'Name': filter_name,'Values': [lookup_address ]}]
-          response = client.describe_instances(Filters=filter)
-          for r in response['Reservations']:
-            for i in r['Instances']:
-              cache_entry[ECI_CACHE_INSTANCE_ID] = i['InstanceId']
-          ##We've found it, so stop
-          if(ECI_CACHE_INSTANCE_ID in cache_entry):
-            break
+        lookup_address = self._play_context.remote_addr
+        try:
+            ipaddress.ip_address(lookup_address)
+        except ValueError:
+            lookup_address = socket.gethostbyname(lookup_address)
+        if self.get_option("instance_id"):
+            cache_entry[ECI_CACHE_INSTANCE_ID] = self.get_option("instance_id")
+        else:
+            client = session.client("ec2")
+            display.vv("NO INSTANCE_ID PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
+            for filter_name in ("ip-address", "private-ip-address", "private-dns-name"):
+                filter = [{"Name": filter_name, "Values": [lookup_address]}]
+                response = client.describe_instances(Filters=filter)
+                for r in response["Reservations"]:
+                    for i in r["Instances"]:
+                        cache_entry[ECI_CACHE_INSTANCE_ID] = i["InstanceId"]
+                ##We've found it, so stop
+                if ECI_CACHE_INSTANCE_ID in cache_entry:
+                    break
 
-      if not ECI_CACHE_INSTANCE_ID in cache_entry:
-        raise Exception('No instance_id found for %s' % lookup_address)
-      
-      if self.get_option('availability_zone'):
-        cache_entry[ECI_CACHE_AZ] = self.get_option('availability_zone')
-      else:
-        display.vv("NO AVAILABILITY_ZONE PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
-        client = session.client('ec2')
-        response = client.describe_instances(InstanceIds=[cache_entry[ECI_CACHE_INSTANCE_ID]])
-        for r in response['Reservations']:
-          for i in r['Instances']:
-            cache_entry[ECI_CACHE_AZ] = i['Placement']['AvailabilityZone']
-          ##We've found it, so stop
-          if ECI_CACHE_AZ in cache_entry:
-            break
-      self._cache_eci_data(cache_entry)
+        if not ECI_CACHE_INSTANCE_ID in cache_entry:
+            raise Exception("No instance_id found for %s" % lookup_address)
 
-      return cache_entry
+        if self.get_option("availability_zone"):
+            cache_entry[ECI_CACHE_AZ] = self.get_option("availability_zone")
+        else:
+            display.vv("NO AVAILABILITY_ZONE PROVIDED, ATTEMPTING LOOKUP for %s" % lookup_address)
+            client = session.client("ec2")
+            response = client.describe_instances(InstanceIds=[cache_entry[ECI_CACHE_INSTANCE_ID]])
+            for r in response["Reservations"]:
+                for i in r["Instances"]:
+                    cache_entry[ECI_CACHE_AZ] = i["Placement"]["AvailabilityZone"]
+                ##We've found it, so stop
+                if ECI_CACHE_AZ in cache_entry:
+                    break
+        self._cache_eci_data(cache_entry)
+
+        return cache_entry
 
     def _create_temporary_key(self):
-      key = rsa.generate_private_key(
-          public_exponent=ECI_KEY_EXPONENT,
-          key_size=ECI_KEY_SIZE,
-          backend=default_backend()
-      )
-      pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-      )
-      file = tempfile.NamedTemporaryFile(delete=False)
-      with file as pem_out:
-          pem_out.write(pem)
-      display.vv("TEMPORARY KEY LOCATION: {0}".format(file.name))
-      return (file.name, key)
+        key = Ed25519PrivateKey.generate()
+        pem = key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.OpenSSH,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        file = tempfile.NamedTemporaryFile(delete=False)
+        with file as pem_out:
+            pem_out.write(pem)
+        display.vv(f"TEMPORARY KEY LOCATION: {file.name}")
+        return (file.name, key)
 
     def _get_boto_args(self):
-      if not hasattr(self, '_boto_args'):
-        self._boto_args = {
-            "region_name": self.get_option('region'),
-            "profile_name": self.get_option('profile'),
-            "aws_secret_access_key": self.get_option('aws_secret_key'),
-            "aws_access_key_id": self.get_option('aws_access_key')
-          }
-      return self._boto_args
+        if not hasattr(self, "_boto_args"):
+            self._boto_args = {
+                "region_name": self.get_option("region"),
+                "profile_name": self.get_option("profile"),
+                "aws_secret_access_key": self.get_option("aws_secret_key"),
+                "aws_access_key_id": self.get_option("aws_access_key"),
+            }
+        return self._boto_args
 
     def _aws_switch_role(self, role_arn):
-      client = self.session.client('sts')
-      response = client.assume_role(
-          RoleArn=role_arn,
-          RoleSessionName='ansible_eci'
-      )
-      return response.get("Credentials")
+        client = self.session.client("sts")
+        response = client.assume_role(RoleArn=role_arn, RoleSessionName="ansible_eci")
+        return response.get("Credentials")
 
     def _init_session(self):
-      if self.session == None:
-        boto_args = self._get_boto_args()
-        self.session = boto3.Session(**boto_args)
+        if self.session == None:
+            boto_args = self._get_boto_args()
+            self.session = boto3.Session(**boto_args)
 
-        if self.get_option('role_arn'):
-          credential = self._aws_switch_role(self.get_option('role_arn'))
-          self.session = boto3.Session(
-            aws_access_key_id=credential["AccessKeyId"],
-            aws_secret_access_key=credential["SecretAccessKey"],
-            aws_session_token=credential["SessionToken"],
-            region_name=self.get_option('region')
-          )
+            if self.get_option("role_arn"):
+                credential = self._aws_switch_role(self.get_option("role_arn"))
+                self.session = boto3.Session(
+                    aws_access_key_id=credential["AccessKeyId"],
+                    aws_secret_access_key=credential["SecretAccessKey"],
+                    aws_session_token=credential["SessionToken"],
+                    region_name=self.get_option("region"),
+                )
 
-      return self.session
+        return self.session
 
     def _push_key(self, connection_metadata):
-      session = self._init_session()
-      client = session.client('ec2-instance-connect')
-      client.send_ssh_public_key(
-          InstanceId=connection_metadata[ECI_CACHE_INSTANCE_ID], 
-          InstanceOSUser=connection_metadata[ECI_CACHE_REMOTE_USER],
-          SSHPublicKey=connection_metadata[ECI_CACHE_PUBLIC_KEY],
-          AvailabilityZone=connection_metadata[ECI_CACHE_AZ],
-      )
-      connection_metadata[ECI_CACHE_LAST_PUSH] = datetime.now().timestamp()
+        session = self._init_session()
+        client = session.client("ec2-instance-connect")
+        client.send_ssh_public_key(
+            InstanceId=connection_metadata[ECI_CACHE_INSTANCE_ID],
+            InstanceOSUser=connection_metadata[ECI_CACHE_REMOTE_USER],
+            SSHPublicKey=connection_metadata[ECI_CACHE_PUBLIC_KEY],
+            AvailabilityZone=connection_metadata[ECI_CACHE_AZ],
+        )
+        connection_metadata[ECI_CACHE_LAST_PUSH] = datetime.now().timestamp()
