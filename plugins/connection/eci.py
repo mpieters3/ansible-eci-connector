@@ -83,8 +83,9 @@ DOCUMENTATION = '''
             - name: eci_disable_caching
           version_added: 2.12.0
       host:
-          description: Hostname/IP/Domain name to connect to.
+          description: Hostname/IP to connect to.
           default: inventory_hostname
+          type: string
           vars:
                - name: inventory_hostname
                - name: ansible_host
@@ -92,7 +93,7 @@ DOCUMENTATION = '''
                - name: delegated_vars['ansible_host']
                - name: delegated_vars['ansible_ssh_host']
       host_key_checking:
-          description: Determines if SSH should check host keys.
+          description: Determines if SSH should reject or not a connection after checking host keys.
           default: True
           type: boolean
           ini:
@@ -111,16 +112,35 @@ DOCUMENTATION = '''
               - name: ansible_ssh_host_key_checking
                 version_added: '2.5'
       password:
-          description: Authentication password for the C(remote_user). Can be supplied as CLI option.
+          description: Authentication password for the O(remote_user). Can be supplied as CLI option.
+          type: string
           vars:
               - name: ansible_password
               - name: ansible_ssh_pass
               - name: ansible_ssh_password
+      password_mechanism:
+          description: Mechanism to use for handling ssh password prompt
+          type: string
+          default: ssh_askpass
+          choices:
+              - ssh_askpass
+              - sshpass
+              - disable
+          version_added: '2.19'
+          env:
+              - name: ANSIBLE_SSH_PASSWORD_MECHANISM
+          ini:
+              - {key: password_mechanism, section: ssh_connection}
+          vars:
+              - name: ansible_ssh_password_mechanism
       sshpass_prompt:
           description:
-              - Password prompt that sshpass should search for. Supported by sshpass 1.06 and up.
+              - Password prompt that C(sshpass)/C(SSH_ASKPASS) should search for.
+              - Supported by sshpass 1.06 and up when O(password_mechanism) set to V(sshpass).
               - Defaults to C(Enter PIN for) when pkcs11_provider is set.
+              - Defaults to C(assword) when O(password_mechanism) set to V(ssh_askpass).
           default: ''
+          type: string
           ini:
               - section: 'ssh_connection'
                 key: 'sshpass_prompt'
@@ -132,6 +152,7 @@ DOCUMENTATION = '''
       ssh_args:
           description: Arguments to pass to all SSH CLI tools.
           default: '-C -o ControlMaster=auto -o ControlPersist=60s'
+          type: string
           ini:
               - section: 'ssh_connection'
                 key: 'ssh_args'
@@ -142,6 +163,7 @@ DOCUMENTATION = '''
                 version_added: '2.7'
       ssh_common_args:
           description: Common extra args for all SSH CLI tools.
+          type: string
           ini:
               - section: 'ssh_connection'
                 key: 'ssh_common_args'
@@ -157,9 +179,10 @@ DOCUMENTATION = '''
       ssh_executable:
           default: ssh
           description:
-            - This defines the location of the SSH binary. It defaults to C(ssh) which will use the first SSH binary available in $PATH.
+            - This defines the location of the SSH binary. It defaults to V(ssh) which will use the first SSH binary available in $PATH.
             - This option is usually not required, it might be useful when access to system SSH is restricted,
               or when using SSH wrappers to connect to remote hosts.
+          type: string
           env: [{name: ANSIBLE_SSH_EXECUTABLE}]
           ini:
           - {key: ssh_executable, section: ssh_connection}
@@ -171,7 +194,8 @@ DOCUMENTATION = '''
       sftp_executable:
           default: sftp
           description:
-            - This defines the location of the sftp binary. It defaults to C(sftp) which will use the first binary available in $PATH.
+            - This defines the location of the sftp binary. It defaults to V(sftp) which will use the first binary available in $PATH.
+          type: string
           env: [{name: ANSIBLE_SFTP_EXECUTABLE}]
           ini:
           - {key: sftp_executable, section: ssh_connection}
@@ -182,7 +206,8 @@ DOCUMENTATION = '''
       scp_executable:
           default: scp
           description:
-            - This defines the location of the scp binary. It defaults to C(scp) which will use the first binary available in $PATH.
+            - This defines the location of the scp binary. It defaults to V(scp) which will use the first binary available in $PATH.
+          type: string
           env: [{name: ANSIBLE_SCP_EXECUTABLE}]
           ini:
           - {key: scp_executable, section: ssh_connection}
@@ -192,6 +217,7 @@ DOCUMENTATION = '''
                 version_added: '2.7'
       scp_extra_args:
           description: Extra exclusive to the C(scp) CLI
+          type: string
           vars:
               - name: ansible_scp_extra_args
           env:
@@ -206,6 +232,7 @@ DOCUMENTATION = '''
           default: ''
       sftp_extra_args:
           description: Extra exclusive to the C(sftp) CLI
+          type: string
           vars:
               - name: ansible_sftp_extra_args
           env:
@@ -220,6 +247,7 @@ DOCUMENTATION = '''
           default: ''
       ssh_extra_args:
           description: Extra exclusive to the SSH CLI.
+          type: string
           vars:
               - name: ansible_ssh_extra_args
           env:
@@ -233,7 +261,10 @@ DOCUMENTATION = '''
             - name: ssh_extra_args
           default: ''
       reconnection_retries:
-          description: Number of attempts to connect.
+          description:
+            - Number of attempts to connect.
+            - Ansible retries connections only if it gets an SSH error with a return code of 255.
+            - Any errors with return codes other than 255 indicate an issue with program execution.
           default: 0
           type: integer
           env:
@@ -263,6 +294,7 @@ DOCUMENTATION = '''
           description:
               - User name with which to login to the remote server, normally set by the remote_user keyword.
               - If no user is supplied, Ansible will let the SSH client binary choose the user as it normally.
+          type: string
           ini:
             - section: defaults
               key: remote_user
@@ -276,8 +308,6 @@ DOCUMENTATION = '''
           keyword:
             - name: remote_user
       pipelining:
-          description:
-            - Pipelining settings
           env:
             - name: ANSIBLE_PIPELINING
             - name: ANSIBLE_SSH_PIPELINING
@@ -294,6 +324,7 @@ DOCUMENTATION = '''
       private_key_file:
           description:
               - Path to private key file to use for authentication.
+          type: string
           ini:
             - section: defaults
               key: private_key_file
@@ -305,12 +336,34 @@ DOCUMENTATION = '''
           cli:
             - name: private_key_file
               option: '--private-key'
+      private_key:
+          description:
+            - Private key contents in PEM format. Requires the C(SSH_AGENT) configuration to be enabled.
+          type: string
+          env:
+            - name: ANSIBLE_PRIVATE_KEY
+          vars:
+            - name: ansible_private_key
+            - name: ansible_ssh_private_key
+          version_added: '2.19'
+      private_key_passphrase:
+          description:
+            - Private key passphrase, dependent on O(private_key).
+            - This does NOT have any effect when used with O(private_key_file).
+          type: string
+          env:
+            - name: ANSIBLE_PRIVATE_KEY_PASSPHRASE
+          vars:
+            - name: ansible_private_key_passphrase
+            - name: ansible_ssh_private_key_passphrase
+          version_added: '2.19'
       control_path:
         description:
           - This is the location to save SSH's ControlPath sockets, it uses SSH's variable substitution.
           - Since 2.3, if null (default), ansible will generate a unique hash. Use ``%(directory)s`` to indicate where to use the control dir path setting.
           - Before 2.3 it defaulted to ``control_path=%(directory)s/ansible-ssh-%%h-%%p-%%r``.
           - Be aware that this setting is ignored if C(-o ControlPath) is set in ssh args.
+        type: string
         env:
           - name: ANSIBLE_SSH_CONTROL_PATH
         ini:
@@ -324,6 +377,7 @@ DOCUMENTATION = '''
         description:
           - This sets the directory to use for ssh control path if the control path setting is null.
           - Also, provides the ``%(directory)s`` variable for the control path setting.
+        type: string
         env:
           - name: ANSIBLE_SSH_CONTROL_PATH_DIR
         ini:
@@ -333,8 +387,10 @@ DOCUMENTATION = '''
           - name: ansible_control_path_dir
             version_added: '2.7'
       sftp_batch_mode:
-        default: 'yes'
-        description: 'TODO: write it'
+        default: true
+        description:
+          - When set to C(True), sftp will be run in batch mode, allowing detection of transfer errors.
+          - When set to C(False), sftp will not be run in batch mode, preventing detection of transfer errors.
         env: [{name: ANSIBLE_SFTP_BATCH_MODE}]
         ini:
         - {key: sftp_batch_mode, section: ssh_connection}
@@ -343,37 +399,23 @@ DOCUMENTATION = '''
           - name: ansible_sftp_batch_mode
             version_added: '2.7'
       ssh_transfer_method:
-        description:
-            - "Preferred method to use when transferring files over ssh"
-            - Setting to 'smart' (default) will try them in order, until one succeeds or they all fail
-            - Using 'piped' creates an ssh pipe with C(dd) on either side to copy the data
-        choices: ['sftp', 'scp', 'piped', 'smart']
+        description: Preferred method to use when transferring files over ssh
+        choices:
+              sftp: This is the most reliable way to copy things with SSH.
+              scp: Deprecated in OpenSSH. For OpenSSH >=9.0 you must add an additional option to enable scp C(scp_extra_args="-O").
+              piped: Creates an SSH pipe with C(dd) on either side to copy the data.
+              smart: Tries each method in order (sftp > scp > piped), until one succeeds or they all fail.
+        default: smart
+        type: string
         env: [{name: ANSIBLE_SSH_TRANSFER_METHOD}]
         ini:
             - {key: transfer_method, section: ssh_connection}
         vars:
             - name: ansible_ssh_transfer_method
               version_added: '2.12'
-      scp_if_ssh:
-        deprecated:
-              why: In favor of the "ssh_transfer_method" option.
-              version: "2.17"
-              alternatives: ssh_transfer_method
-        default: smart
-        description:
-          - "Preferred method to use when transferring files over SSH."
-          - When set to I(smart), Ansible will try them until one succeeds or they all fail.
-          - If set to I(True), it will force 'scp', if I(False) it will use 'sftp'.
-          - This setting will overridden by ssh_transfer_method if set.
-        env: [{name: ANSIBLE_SCP_IF_SSH}]
-        ini:
-        - {key: scp_if_ssh, section: ssh_connection}
-        vars:
-          - name: ansible_scp_if_ssh
-            version_added: '2.7'
       use_tty:
         version_added: '2.5'
-        default: 'yes'
+        default: true
         description: add -tt to ssh commands to force tty allocation.
         env: [{name: ANSIBLE_SSH_USETTY}]
         ini:
@@ -406,14 +448,25 @@ DOCUMENTATION = '''
       pkcs11_provider:
         version_added: '2.12'
         default: ""
+        type: string
         description:
           - "PKCS11 SmartCard provider such as opensc, example: /usr/local/lib/opensc-pkcs11.so"
-          - Requires sshpass version 1.06+, sshpass must support the -P option.
         env: [{name: ANSIBLE_PKCS11_PROVIDER}]
         ini:
           - {key: pkcs11_provider, section: ssh_connection}
         vars:
           - name: ansible_ssh_pkcs11_provider
+      verbosity:
+        version_added: '2.19'
+        default: 0
+        type: int
+        description:
+          - Requested verbosity level for the SSH CLI.
+        env: [{name: ANSIBLE_SSH_VERBOSITY}]
+        ini:
+          - {key: verbosity, section: ssh_connection}
+        vars:
+          - name: ansible_ssh_verbosity
 '''
 
 import hashlib
@@ -437,13 +490,12 @@ except ImportError:
 try:
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives.serialization.ssh import load_ssh_private_key
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     HAS_CRYPTOGRAPHY = True
 except ImportError:
     HAS_CRYPTOGRAPHY = False
 
-ssh = importlib.import_module('ansible.plugins.connection.ssh')
 
 try:
     from __main__ import display
@@ -467,6 +519,8 @@ ECI_CACHE_ROLE_ARN = "role_arn"
 
 ECI_CONNECTION_CACHE = {}
 
+ssh = importlib.import_module('ansible.plugins.connection.ssh')
+
 class Connection(ssh.Connection):
     """ SSH connection that uses EC2 Instance Connect to connect """
 
@@ -485,6 +539,8 @@ class Connection(ssh.Connection):
         self.session = None
 
         self.set_options()
+
+
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
       self.set_option('private_key_file', self._get_eci_data()[ECI_CACHE_KEY_FILE])
@@ -599,20 +655,16 @@ class Connection(ssh.Connection):
       return cache_entry
 
     def _create_temporary_key(self):
-      key = rsa.generate_private_key(
-          public_exponent=ECI_KEY_EXPONENT,
-          key_size=ECI_KEY_SIZE,
-          backend=default_backend()
-      )
+      key = Ed25519PrivateKey.generate()
       pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
+          encoding=serialization.Encoding.PEM,
+          format=serialization.PrivateFormat.OpenSSH,
+          encryption_algorithm=serialization.NoEncryption(),
       )
       file = tempfile.NamedTemporaryFile(delete=False)
       with file as pem_out:
           pem_out.write(pem)
-      display.vv("TEMPORARY KEY LOCATION: {0}".format(file.name))
+      display.vv(f"TEMPORARY KEY LOCATION: {file.name}")
       return (file.name, key)
 
     def _get_boto_args(self):

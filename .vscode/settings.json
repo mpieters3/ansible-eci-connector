@@ -1,0 +1,9 @@
+{
+    "ansible.python.interpreterPath": "/usr/local/bin/python3",
+    "debug.console.maximumLines": 10000,
+    "debug.console.wordWrap": false,
+    "debug.console.lineHeight": 0,
+    "debug.console.historySuggestions": true,
+    "debug.console.closeOnEnd": false,
+    "debug.console.collapseIdenticalLines": true
+}
