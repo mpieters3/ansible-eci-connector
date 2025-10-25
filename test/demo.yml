@@ -116,3 +116,8 @@
         region: us-east-1
         instance_ids: "{{ ec2.instance_ids }}"
         instance_type: t2.micro
+    - name: Delete the security group
+      amazon.aws.ec2_group:
+        name: eci-example
+        region: us-east-1
+        state: absent
