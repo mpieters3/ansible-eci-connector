@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug demo.yml (run_playbook in Python)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ansible",
+      "python": "/usr/local/bin/python3.12",
+      "args": [
+        "playbook",
+        "${workspaceFolder}/test/demo.yml",
+        "-vvv"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ANSIBLE_STDOUT_CALLBACK": "debug",
+        "ANSIBLE_CONNECTION_PLUGINS": "/workspaces/ansible-eci-connector/plugins/connection"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": false
+    }
+  ]
+}

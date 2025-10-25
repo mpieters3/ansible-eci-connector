@@ -1,0 +1,32 @@
+{
+    "name": "Ansible Collection Development Container",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+	"customizations":{
+		"vscode": {
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "bash",
+				"python.linting.enabled": true,
+				"python.linting.pylintEnabled": true,
+				"python.formatting.provider": "black",
+				"python.formatting.blackArgs": [
+					"--line-length=120"
+				],
+				"editor.formatOnSave": true,
+				"ansible.python.interpreter": "/usr/local/bin/python"
+			},
+			"extensions": [
+				"ms-python.python",
+				"ms-vscode-remote.remote-containers",
+				"esbenp.prettier-vscode"
+			]
+		}
+	},
+	"containerEnv": {
+		"ANSIBLE_CONNECTION_PLUGINS": "/workspaces/ansible-eci-connector/plugins/connection"
+	},
+    "forwardPorts": [],
+    "postCreateCommand": "",
+    "remoteUser": "vscode"
+}
