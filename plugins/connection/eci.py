@@ -80,7 +80,7 @@ DOCUMENTATION = '''
             - section: defaults
               key: eci_disable_caching
           vars:
-            - name: eci_disable_caching        
+            - name: eci_disable_caching
           version_added: 2.12.0
       host:
           description: Hostname/IP/Domain name to connect to.
@@ -433,7 +433,7 @@ try:
     HAS_BOTO = True
 except ImportError:
     HAS_BOTO = False
-    
+
 try:
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives.serialization.ssh import load_ssh_private_key
@@ -486,7 +486,7 @@ class Connection(ssh.Connection):
 
         self.set_options()
 
-    def exec_command(self, cmd, in_data=None, sudoable=True):        
+    def exec_command(self, cmd, in_data=None, sudoable=True):
       self.set_option('private_key_file', self._get_eci_data()[ECI_CACHE_KEY_FILE])
       self.set_option('sshpass_prompt', '')
       self.set_option('password', None)
@@ -496,7 +496,7 @@ class Connection(ssh.Connection):
       self._refresh_eci()
       return ssh.Connection._bare_run(self, cmd=cmd, in_data=in_data, sudoable=sudoable, checkrc=checkrc)
 
-    def _cache_file_path(self):      
+    def _cache_file_path(self):
       cache_key = "%s_%s_%s" % (self._play_context.remote_addr, self._play_context.remote_user, self._ansible_playbook_pid)
       m = hashlib.sha1()
       m.update(bytes(cache_key, "utf-8"))
@@ -527,7 +527,7 @@ class Connection(ssh.Connection):
       if hasattr(self, '_eci_data'):
         display.vvv("LOCAL ECI DATA EXISTS")
         return self._eci_data
-      
+
       if not self.get_option('disable_caching'):
         ## check if a file already exists
         file_path = self._cache_file_path()
@@ -547,17 +547,17 @@ class Connection(ssh.Connection):
         display.vv("NO PRIVATE KEY FILE, GENERATING ON DEMAND")
         private_key_file, private_key = self._create_temporary_key()
 
-        public_key = private_key.public_key().public_bytes(
-          encoding=serialization.Encoding.OpenSSH,
-          format=serialization.PublicFormat.OpenSSH
-        ).decode('utf-8')
-        
-        cache_entry = {
-          ECI_CACHE_KEY_FILE: private_key_file,
-          ECI_CACHE_PUBLIC_KEY: public_key,
-          ECI_CACHE_LAST_PUSH: 0,
-          ECI_CACHE_REMOTE_USER: self._play_context.remote_user,
-        }
+      public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.OpenSSH,
+        format=serialization.PublicFormat.OpenSSH
+      ).decode('utf-8')
+
+      cache_entry = {
+        ECI_CACHE_KEY_FILE: private_key_file,
+        ECI_CACHE_PUBLIC_KEY: public_key,
+        ECI_CACHE_LAST_PUSH: 0,
+        ECI_CACHE_REMOTE_USER: self._play_context.remote_user,
+      }
 
       lookup_address = self._play_context.remote_addr
       try:
@@ -581,7 +581,7 @@ class Connection(ssh.Connection):
 
       if not ECI_CACHE_INSTANCE_ID in cache_entry:
         raise Exception('No instance_id found for %s' % lookup_address)
-      
+
       if self.get_option('availability_zone'):
         cache_entry[ECI_CACHE_AZ] = self.get_option('availability_zone')
       else:
@@ -653,7 +653,7 @@ class Connection(ssh.Connection):
       session = self._init_session()
       client = session.client('ec2-instance-connect')
       client.send_ssh_public_key(
-          InstanceId=connection_metadata[ECI_CACHE_INSTANCE_ID], 
+          InstanceId=connection_metadata[ECI_CACHE_INSTANCE_ID],
           InstanceOSUser=connection_metadata[ECI_CACHE_REMOTE_USER],
           SSHPublicKey=connection_metadata[ECI_CACHE_PUBLIC_KEY],
           AvailabilityZone=connection_metadata[ECI_CACHE_AZ],
