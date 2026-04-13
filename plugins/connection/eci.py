@@ -505,8 +505,6 @@ except ImportError:
 
 
 ECI_PUSH_EXPIRY = 45
-ECI_KEY_SIZE = 2048
-ECI_KEY_EXPONENT = 65537
 
 ECI_CACHE_KEY_FILE = "key_file"
 ECI_CACHE_LAST_PUSH = "last_push"
